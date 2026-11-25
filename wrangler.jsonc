@@ -1,0 +1,10 @@
+// Cloudflare Workers: publish the built website in dist/ as a static site (no server code).
+// Cloudflare runs `npm run build` (build command in the dashboard), then `npx wrangler deploy`.
+{
+  "name": "ifrs-9-ecl",
+  "compatibility_date": "2025-11-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
