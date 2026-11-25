@@ -224,3 +224,21 @@ body { background: #eef2f7; }
 .tb th { text-align: left; font-weight: 700; color: var(--ink2); padding: 8px 8px 8px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .tb td { padding: 8px 8px 8px 0; border-bottom: 1px solid #eef2f6; } .tb tr.tot td { font-weight: 700; border-top: 1px solid var(--ink); }
 .srcs { font-size: 12.5px; line-height: 1.7; padding-left: 18px; }
+
+/* ---------- assumption tables: numbers centred under their headings ---------- */
+.tbl.ed th, .tbl.ed td { text-align: center; }
+.tbl.ed th:first-child, .tbl.ed td:first-child { text-align: left; }
+.tbl.ed .in.num { text-align: center; }
+.tbl.ed td .in-wrap { width: auto; display: inline-flex; }
+.tbl.ed td .in-wrap .in { padding-right: 46px; padding-left: 12px; }
+.tbl.rows td { padding: 12px 10px; }
+.tbl.rows td:first-child { width: 46%; }
+.tbl.rows td small { display: block; color: var(--ink3); font-size: 12px; font-weight: 400; margin-top: 2px; }
+.tbl.rows .radio { display: flex; align-items: center; gap: 8px; cursor: pointer; } .tbl.rows .radio input { accent-color: #0f766e; width: 16px; height: 16px; }
+.tbl.rows:not(.ed) td.mut { text-align: left; font-size: 13px; }
+.tag { font-size: 11px; font-weight: 700; color: #0f5f59; background: #ccfbf1; padding: 2px 8px; border-radius: 99px; }
+.tbl td.neg { color: var(--bad); font-weight: 700; } .tbl td.pos { color: var(--ok); font-weight: 700; }
+.basis { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin: 4px 0 12px; }
+.tbl.bands td.basis-t { text-align: left; font-size: 12.5px; color: var(--ink2); min-width: 220px; }
+.grow { flex: 1; }
+.h4.first { margin-top: 4px; }

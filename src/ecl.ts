@@ -1,4 +1,5 @@
-export type Bucket = { label: string; from: number; to: number; pd: number };
+// hBal / hLost: optional history behind the rate (amount that was in the band, amount never collected) - B5.5.35
+export type Bucket = { label: string; from: number; to: number; pd: number; hBal?: number; hLost?: number };
 export type Factor = { name: string; unit: string; baseline: number; base: number; up: number; down: number; sens: number; src?: string };
 export type Settings = {
   reportDate: string; termsDays: number; method: 'simplified' | 'general';
@@ -15,6 +16,7 @@ export type Settings = {
   segBy: 'segment' | 'country' | 'none'; segMult: Record<string, number>;
   openingAllowance: number; writeOffs: number; recoveries: number;
   specific: Record<string, Specific>;
+  rateBasis?: 'example' | 'own' | 'history'; // where the band rates come from (shown in the report)
 };
 export type Specific = { mode: 'pct' | 'amt'; value: number; note: string };
 export type Inv = {
@@ -55,7 +57,7 @@ export const defaultSettings = (reportDate: string): Settings => ({
   reportDate, termsDays: 30, method: 'simplified', rateType: 'pd', buckets: defaultBuckets(), lgd: 0.45, eir: 0.05, months: 3,
   sicrDays: 30, defaultDays: 90, sicrMult: 2, ccf: 1, measure: 'ac',
   factors: defaultFactors(), wBase: 0.5, wUp: 0.2, wDown: 0.3, overlay: 0,
-  segBy: 'segment', segMult: {}, openingAllowance: 0, writeOffs: 0, recoveries: 0, specific: {},
+  segBy: 'segment', segMult: {}, openingAllowance: 0, writeOffs: 0, recoveries: 0, specific: {}, rateBasis: 'example',
 });
 
 const DAY = 86400000;
@@ -367,3 +369,22 @@ export function sampleLoans(): string[][] {
   rows.push(['Distressed Debt Buyout', 'LN-2001', '2025-10-01', '2028-10-01', '900000', 'Purchased', 'SAR', '0', '100', '60%', '60%', '60%', '18%', '0', 'Yes', '250000', 'Yes']);
   return rows;
 }
+
+// ---------- age band helpers: bands always join up (each starts the day after the previous one ends) ----------
+export function setBandEnd(b: Bucket[], i: number, to: number): Bucket[] {
+  const out = b.map(x => ({ ...x })); const lo = i === 0 ? -99998 : out[i].from;
+  out[i].to = Math.max(lo, Math.round(to));
+  for (let k = i + 1; k < out.length; k++) { out[k].from = out[k - 1].to + 1; if (out[k].to < out[k].from && k < out.length - 1) out[k].to = out[k].from; }
+  out[out.length - 1].to = 99999; out[0].from = -99999; return out;
+}
+export function removeBand(b: Bucket[], i: number): Bucket[] {
+  if (b.length <= 2) return b;
+  const out = b.filter((_, k) => k !== i).map(x => ({ ...x }));
+  for (let k = 1; k < out.length; k++) out[k].from = out[k - 1].to + 1;
+  out[0].from = -99999; out[out.length - 1].to = 99999; return out;
+}
+export function addBand(b: Bucket[]): Bucket[] {
+  const l = b[b.length - 1]; const start = Math.max(l.from, 1);
+  return b.slice(0, -1).concat([{ ...l, to: start + 89 }, { label: 'Over ' + (start + 89) + ' days', from: start + 90, to: 99999, pd: Math.min(1, l.pd + 0.05) }]);
+}
+export const historyRate = (x: Bucket) => x.hBal && x.hBal > 0 ? Math.min(1, Math.max(0, (x.hLost || 0) / x.hBal)) : null;

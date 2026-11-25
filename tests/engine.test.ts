@@ -65,3 +65,19 @@ test('IFRS 9 ECL engine', () => {
   // bucket gaps -> next higher
   const gb = [{ label: 'A', from: -99999, to: 30, pd: .01 }, { label: 'B', from: 40, to: 99999, pd: .5 }]; ok(E.bucketOf(gb, 35).label === 'B' && E.bucketOf(gb, -200000).label === 'A', 'bucket gap');
 });
+
+test('age bands always join up, history rates', () => {
+  const contiguous = (b: E.Bucket[]) => b.every((x, i) => i === 0 ? x.from === -99999 : x.from === b[i - 1].to + 1) && b[b.length - 1].to === 99999;
+  let b = E.defaultBuckets();
+  b = E.setBandEnd(b, 2, 75);           // 31-60 becomes 31-75, next band starts at 76
+  expect(contiguous(b)).toBe(true); expect(b[3].from).toBe(76);
+  b = E.removeBand(b, 3);               // remove 76-90: next band starts at 76
+  expect(contiguous(b)).toBe(true); expect(b[3].from).toBe(76);
+  b = E.addBand(b);
+  expect(contiguous(b)).toBe(true); expect(b.length).toBe(7);
+  b = E.removeBand(b, 0); expect(contiguous(b)).toBe(true);
+  expect(E.historyRate({ label: 'x', from: 61, to: 90, pd: 0, hBal: 1000000, hLost: 66000 })).toBeCloseTo(0.066, 10); // IFRS 9 IE Example 12, 61-90 days
+  expect(E.historyRate({ label: 'x', from: 1, to: 2, pd: 0 })).toBe(null);
+  // every day maps to exactly one band
+  for (const d of [-500, 0, 1, 30, 31, 75, 76, 365, 366, 5000]) expect(E.bucketOf(b, d)).toBeTruthy();
+});

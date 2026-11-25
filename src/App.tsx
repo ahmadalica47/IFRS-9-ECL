@@ -2,17 +2,24 @@ import { Method } from './Method';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Closing, FileCard } from '@instinct/files';
 import './style.css';
-import { Bucket, Specific, defaultBuckets, FIELDS, Inv, samplePrior, sampleLoans, FieldKey, Settings, autoMap, buildInvoices, calculate, defaultSettings, parseCSV, sampleData, toISODate } from './ecl';
+import { Bucket, Calc, Specific, defaultBuckets, setBandEnd, removeBand, addBand, historyRate, FIELDS, Inv, samplePrior, sampleLoans, FieldKey, Settings, autoMap, buildInvoices, calculate, defaultSettings, parseCSV, sampleData, toISODate } from './ecl';
 import { Country, FALLBACK_COUNTRIES, MacroResult, applyMacro, loadCountries, loadMacro } from './macro';
 import { Dashboard } from './Dashboard';
 import { ReconLine, STAGES, comparePrior } from './dash';
 import { Cell, Sheet, download, readXlsx, toCSV, writeXlsx } from './xlsx';
-import { Btn, Card, Field, Info, Note, Num, STAGE_COLOR, Steps, Tabs, fmt, pct, short } from './ui';
+import { Btn, Card, Field, Info, Note, Num, STAGE_COLOR, Seg, Steps, Tabs, fmt, pct, short } from './ui';
 
 const cleanCell = (v: Cell) => v === null || v === undefined ? '' : typeof v === 'number' ? String(v) : /^%:/.test(v) ? String(+(parseFloat(v.slice(2)) * 100).toFixed(4)) + '%' : v.replace(/^​/, '').replace(/[\t\r\n]+/g, ' ');
 const toTSV = (rows: Cell[][]) => rows.map(r => r.map(cleanCell).join('\t')).join('\n');
 const eom = (iso: string) => { const [y, m] = iso.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
 const lastMonthEnd = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0)).toISOString().slice(0, 10); };
+// Plain-language explanation of where an age band's rate came from (shown on screen, in the band download and in the report)
+export function bandBasis(b: Bucket, s: Settings): string {
+    const basis = s.rateBasis || 'example';
+    if (basis === 'history') return b.hBal && b.hBal > 0 ? `History: ${fmt(b.hLost || 0)} never collected / ${fmt(b.hBal)} in band = ${pct((b.hLost || 0) / b.hBal, 2)} (loss rate, B5.5.35)` : `No history entered: ${pct(b.pd, 2)} used as a loss rate (no LGD). Enter the history or type the rate`;
+    if (basis === 'own') return s.rateType === 'loss' ? 'Your own loss rate (LGD included)' : 'Your own probability of default, x LGD ' + pct(s.lgd, 0);
+    return 'Illustrative example, x LGD ' + pct(s.lgd, 0) + '. Replace with your own history';
+}
 type Kind = 'receivables' | 'loans';
 type SetTab = 'basics' | 'economy' | 'rates' | 'staging' | 'specific' | 'prior';
 
@@ -104,10 +111,8 @@ export function App() {
     const set = (p: Partial<Settings>) => setS(prev => ({ ...prev, ...p }));
     const setBucket = (i: number, p: Partial<Bucket>) => set({ buckets: s.buckets.map((b, j) => j === i ? { ...b, ...p } : b) });
     const wTotal = s.wBase + s.wUp + s.wDown;
-    const [hist, setHist] = useState<Record<string, { bal: number; lost: number }>>({});
     const setSpec = (c: string, p: Partial<Specific>) => set({ specific: { ...s.specific, [c]: { ...s.specific[c], ...p } } });
     const custNames = useMemo(() => built ? [...new Set(built.rows.map(r => r.customer))].sort() : [], [built]);
-    const bandIssues = useMemo(() => { const o: string[] = []; const b = s.buckets; for (let i = 1; i < b.length; i++) { if (b[i].from > b[i - 1].to + 1) o.push(`Gap between "${b[i - 1].label}" and "${b[i].label}": days ${b[i - 1].to + 1} to ${b[i].from - 1} are not in any band.`); if (b[i].from <= b[i - 1].to) o.push(`"${b[i - 1].label}" and "${b[i].label}" overlap.`); } return o; }, [s.buckets]);
     const hasLoanCols = !!(map && (map.maturity >= 0 || map.pd >= 0));
 
     const dlSample = (which: 'full' | 'min' | 'loans', ext: 'csv' | 'xlsx') => {
@@ -143,7 +148,7 @@ export function App() {
             ['Discount factor', res.df], ['Management overlay', '%:' + s.overlay],
             ['Significant increase in credit risk: days past due over', s.sicrDays], ['Default: days past due over', s.defaultDays], ['Significant increase: PD now / PD at recognition at least', s.sicrMult],
             ['Credit conversion factor for undrawn commitments', '%:' + s.ccf], [],
-            ['Ageing bucket', 'From (days past due)', 'To', 'Probability of default'], ...s.buckets.map(b => [b.label, b.from < -999 ? '' : b.from, b.to > 9999 ? '' : b.to, '%:' + b.pd] as Cell[]), [],
+            ['Age band', 'From (days past due)', 'To', 'Rate', 'How the rate was set'], ...s.buckets.map(b => [b.label, b.from < -999 ? '' : b.from, b.to > 9999 ? '' : b.to, '%:' + b.pd, bandBasis(b, s)] as Cell[]), [],
             ['Macro factor', 'Unit', 'Baseline', 'Base', 'Upside', 'Downside', 'Sensitivity (log-PD per unit)', 'Source'], ...s.factors.map(f => [f.name, f.unit, f.baseline, f.base, f.up, f.down, f.sens, f.src || 'Manual default'] as Cell[]), [],
             ['Scenario', 'Weight', 'PD multiplier', 'ECL'], ...res.scen.map(x => [x.name, '%:' + x.w, x.mult, x.ecl] as Cell[])];
         const ageing: Cell[][] = [['Bucket', 'Invoices', 'Gross amount', 'ECL', 'Coverage %'], ...res.byBucket.map(b => [b.key, b.n, b.gross, b.ecl, '%:' + (b.gross ? b.ecl / b.gross : 0)] as Cell[]), ...(res.spec.n ? [['Specific provisions', res.spec.n, res.spec.gross, res.spec.ecl, '%:' + (res.spec.gross ? res.spec.ecl / res.spec.gross : 0)] as Cell[]] : []), ['Total', res.rows.length, res.gross, res.ecl, '%:' + res.coverage]];
@@ -179,6 +184,15 @@ export function App() {
         ];
         return { sheets, inv };
     };
+    const bandRows = (): Cell[][] => {
+        const r = res!; const head: Cell[] = ['Age band', 'From (days past due)', 'To (days past due)', 'Rate', 'How the rate was set', 'Past amount in band', 'Never collected', 'Items now', 'Owed now', 'Expected loss now'];
+        return [head, ...s.buckets.map((b, i) => { const rs = r.rows.filter(x => x.bucket === b.label);
+            return [b.label, i === 0 ? 'not yet due' : b.from, i === s.buckets.length - 1 ? 'and over' : b.to, '%:' + b.pd, bandBasis(b, s), b.hBal || null, b.hLost || null, rs.length, rs.reduce((a, x) => a + x.amount, 0), rs.reduce((a, x) => a + x.ecl, 0)] as Cell[]; }),
+            [], ['Reporting date', s.reportDate], ['Rates are', s.rateBasis === 'history' || s.rateType === 'loss' ? 'Loss rates (LGD included)' : 'Probability of default, multiplied by LGD ' + pct(s.lgd, 0)]];
+    };
+    const dlBands = (kind: 'xlsx' | 'csv') => { if (!res) return; const rows = bandRows();
+        if (kind === 'csv') download('ifrs9-age-bands.csv', new Blob([toCSV(rows)], { type: 'text/csv' }));
+        else download('ifrs9-age-bands.xlsx', writeXlsx([{ name: 'Age bands', rows, widths: [18, 14, 14, 10, 60, 16, 16, 10, 16, 18] }])); };
     const tsvAll = () => { const w = workbook(); return w ? w.sheets.map(sh => '### ' + sh.name + '\n' + toTSV(sh.rows)).join('\n\n') : ''; };
     const dlXlsx = () => { const w = workbook(); if (w) download('ifrs9-ecl-results.xlsx', writeXlsx(w.sheets)); };
     const dlCsv = () => { const w = workbook(); if (w) download('ifrs9-ecl-items.csv', new Blob([toCSV(w.inv)], { type: 'text/csv' })); };
@@ -324,72 +338,129 @@ export function App() {
                     <div className="nav"><span /><Btn onClick={() => setSetTab('economy')}>Next: economy</Btn></div>
                 </Card>}
 
-                {setTab === 'economy' && <Card title="Forward-looking economic scenarios" sub="IFRS 9 5.5.17 asks for a probability-weighted amount using forecasts. We test a normal, a better and a worse economy." info="Each factor moves the default rates: risk multiplier = e^(sum of strength x (scenario value - normal range)), kept between 0.5 and 3.">
-                    <div className="chips">{s.factors.map(f => <div key={f.name}><small>{f.name}</small><b>{f.base}{f.unit === '%' ? '%' : ' ' + f.unit}</b><small>{f.src ? 'World Bank' : 'manual'}</small></div>)}</div>
-                    <div className="scroll"><table className="tbl ed"><thead><tr><th>Factor</th><th className="r">Normal range <Info text="Long-run level: median (or average) of the 10 years before the latest year." /></th><th className="r">Normal</th><th className="r">Better</th><th className="r">Worse</th><th className="r">Strength <Info text="Change in log default rate per unit. -0.08 means +1 point of GDP growth lowers default rates by about 8%. Illustrative: estimate from your own loss history." /></th></tr></thead>
-                        <tbody>{s.factors.map((f, i) => { const up = (p: Partial<typeof f>) => set({ factors: s.factors.map((x, j) => j === i ? { ...x, ...p } : x) }); return <tr key={f.name}><td>{f.name} <span className="mut">({f.unit})</span><small className="src">{f.src || 'Manual default'}</small></td>
-                            <td className="r"><Num w={80} value={f.baseline} step={0.1} onChange={n => up({ baseline: n })} /></td><td className="r"><Num w={80} value={f.base} step={0.1} onChange={n => up({ base: n })} /></td>
-                            <td className="r"><Num w={80} value={f.up} step={0.1} onChange={n => up({ up: n })} /></td><td className="r"><Num w={80} value={f.down} step={0.1} onChange={n => up({ down: n })} /></td>
-                            <td className="r"><Num w={80} value={f.sens} step={0.005} onChange={n => up({ sens: n })} /></td></tr>; })}</tbody></table></div>
-                    <h4 className="h4">Scenario weights</h4>
-                    <div className="form three">
-                        <Field label="Normal"><Num value={s.wBase} pctMode onChange={n => set({ wBase: n })} /></Field>
-                        <Field label="Better"><Num value={s.wUp} pctMode onChange={n => set({ wUp: n })} /></Field>
-                        <Field label="Worse"><Num value={s.wDown} pctMode onChange={n => set({ wDown: n })} /></Field>
-                    </div>
-                    {Math.abs(wTotal - 1) > 0.0005 && <Note tone="warn" title="Weights do not add to 100%">They add to {pct(wTotal, 1)}. They are scaled to 100% in the calculation.</Note>}
-                    <details className="dx"><summary>World Bank series used</summary>
-                        <Field label="Normal range and spread" hint="The median is less affected by one-off years such as 2020."><select className="in" value={robust ? 'r' : 'm'} onChange={e => setRobust(e.target.value === 'r')}><option value="r">Median and robust spread (recommended)</option><option value="m">Average and standard deviation</option></select></Field>
-                        {macroRes.filter(r => r.found).map(r => <div key={r.name} className="scroll"><p><b>{r.name}</b> <span className="mut">({r.code}; latest year {r.usedYear}; average {r.mean!.toFixed(2)}, median {r.median!.toFixed(2)})</span></p>
-                            <table className="tbl"><thead><tr>{r.series!.map(p => <th key={p.year} className="r">{p.year}</th>)}</tr></thead><tbody><tr>{r.series!.map(p => <td key={p.year} className="r">{p.value.toFixed(1)}</td>)}</tr></tbody></table></div>)}
-                        {!macroRes.length && <p className="mut">No World Bank data loaded yet.</p>}
-                    </details>
-                    <Note tone="warn" title="History is not a forecast">World Bank figures are past actuals. For a reportable figure, type your own forecasts (for example IMF World Economic Outlook; for oil, the US EIA outlook). Your typed values are kept unless you change the country or year.</Note>
-                    <div className="nav"><Btn kind="ghost" onClick={() => setSetTab('basics')}>Back</Btn><Btn onClick={() => setSetTab('rates')}>Next: loss rates</Btn></div>
-                </Card>}
+                {setTab === 'economy' && (() => {
+                    const single = s.wUp === 0 && s.wDown === 0;
+                    const mB = res.scen[0].mult;
+                    const editBase = (i: number, n: number) => set({ factors: s.factors.map((x, j) => { if (j !== i) return x; const d = n - x.base; return { ...x, base: n, up: +(x.up + d).toFixed(4), down: +(x.down + d).toFixed(4) }; }) });
+                    return <Card title="Economic outlook" sub="Enter your forecast for each factor. IFRS 9 5.5.17 requires the allowance to reflect forecasts of future economic conditions.">
+                        <div className="scroll"><table className="tbl ed rows">
+                            <thead><tr><th>Factor</th><th>Long-run level</th><th>Your forecast</th><th>Effect on default risk</th><th>Source</th></tr></thead>
+                            <tbody>{s.factors.map((f, i) => { const eff = Math.exp(f.sens * (f.base - f.baseline)) - 1;
+                                return <tr key={f.name}>
+                                    <td><b>{f.name}</b> <span className="mut">({f.unit})</span></td>
+                                    <td>{f.baseline}</td>
+                                    <td><Num w={110} value={f.base} step={0.1} onChange={n => editBase(i, n)} /></td>
+                                    <td className={Math.abs(eff) < 0.0005 ? 'mut' : eff > 0 ? 'neg' : 'pos'}>{Math.abs(eff) < 0.0005 ? 'none' : (eff > 0 ? '+' : '') + pct(eff, 1)}</td>
+                                    <td className="mut sm">{f.src ? 'World Bank, ' + (f.src.match(/data year (\d+)/)?.[1] || '') : 'Manual'}</td></tr>; })}
+                                <tr className="tot"><td>All factors together</td><td /><td /><td className={mB > 1.0005 ? 'neg' : mB < 0.9995 ? 'pos' : 'mut'}>{mB > 1.0005 || mB < 0.9995 ? (mB > 1 ? '+' : '') + pct(mB - 1, 1) : 'none'}</td><td /></tr>
+                            </tbody></table></div>
+                        <p className="mut sm">"Long-run level" is the normal level from the past 10 years. A forecast worse than that level raises the chance of not paying; a better one lowers it.</p>
 
-                {setTab === 'rates' && <Card title="Loss rates by age band" sub="The provision matrix (IFRS 9 B5.5.35). Older items have higher rates." info="IFRS 9 gives no table: the starting rates are examples. Replace them with your own history.">
-                    <Note tone="warn" title="Starting values are examples">Replace them with your own loss history before reporting.</Note>
-                    <div className="form">
-                        <Field label="These rates are" info="A loss rate from your write-off history already includes the share lost (LGD). Choosing 'loss rates' stops LGD from being applied twice.">
-                            <select className="in" value={s.rateType} onChange={e => set({ rateType: e.target.value as any })}><option value="pd">Chance of not paying (PD) - multiplied by LGD</option><option value="loss">Historical loss rates - LGD already included</option></select></Field>
-                        <Field label="Share lost if not paid (LGD)" hint={s.rateType === 'loss' ? 'Not used with loss rates.' : 'Used for rows without their own LGD.'}><Num value={s.lgd} pctMode onChange={n => set({ lgd: Math.min(1, Math.max(0, n)) })} /></Field>
-                        <Field label="Payment terms if no due date" hint="days"><Num value={s.termsDays} onChange={n => set({ termsDays: n })} suffix="days" /></Field>
-                        <Field label="Discount rate (EIR)" info="Time value of money (5.5.17(b)). Set months to 0 to switch off; IFRS 9 Example 12 does not discount."><Num value={s.eir} pctMode step={0.5} onChange={n => set({ eir: n })} /></Field>
-                        <Field label="Months until collection"><Num value={s.months} onChange={n => set({ months: n })} suffix="months" /></Field>
-                        <Field label="Management overlay" info="An extra margin for risks the model does not capture. Document why."><Num value={s.overlay} pctMode step={1} onChange={n => set({ overlay: n })} /></Field>
-                    </div>
-                    <div className="scroll"><table className="tbl ed"><thead><tr><th>Age band</th><th className="r">Days late from</th><th className="r">to</th><th className="r">Rate</th><th className="r">Items now</th><th /></tr></thead><tbody>{s.buckets.map((b, i) => <tr key={i}>
-                        <td><input className="in" style={{ width: 140 }} value={b.label} onChange={e => setBucket(i, { label: e.target.value })} /></td>
-                        <td className="r"><Num value={b.from < -999 ? -999 : b.from} w={80} onChange={n => setBucket(i, { from: n })} /></td><td className="r"><Num value={b.to > 9999 ? 99999 : b.to} w={80} onChange={n => setBucket(i, { to: n })} /></td>
-                        <td className="r"><Num value={b.pd} pctMode w={90} onChange={n => setBucket(i, { pd: Math.min(1, Math.max(0, n)) })} /></td>
-                        <td className="r mut">{res.rows.filter(r => r.bucket === b.label).length}</td>
-                        <td className="r">{s.buckets.length > 2 && <Btn small kind="ghost" onClick={() => set({ buckets: s.buckets.filter((_, j) => j !== i) })}>Remove</Btn>}</td></tr>)}</tbody></table></div>
-                    {bandIssues.length > 0 && <Note tone="warn" title="Check the age bands">{bandIssues.join(' ')}</Note>}
-                    <div className="row"><Btn small kind="ghost" onClick={() => { const l = s.buckets[s.buckets.length - 1]; set({ buckets: s.buckets.slice(0, -1).concat([{ ...l, to: l.from + 89 }, { label: (l.from + 90) + '+ days', from: l.from + 90, to: 99999, pd: Math.min(1, l.pd + 0.05) }]) }); }}>Add a band</Btn><Btn small kind="ghost" onClick={() => set({ buckets: defaultBuckets() })}>Reset bands</Btn></div>
-                    <details className="dx"><summary>Work out rates from your own history</summary>
-                        <p className="mut">For each band: how much was in that band in the past, and how much was never collected. Rate = lost / balance (B5.5.35). "Use these rates" also switches to loss rates so LGD is not applied twice.</p>
-                        <div className="scroll"><table className="tbl ed"><thead><tr><th>Band</th><th className="r">Balance in band</th><th className="r">Never collected</th><th className="r">Rate</th></tr></thead><tbody>{s.buckets.map(b => { const h = hist[b.label] || { bal: 0, lost: 0 }; return <tr key={b.label}><td>{b.label}</td><td className="r"><Num w={120} value={h.bal} onChange={n => setHist({ ...hist, [b.label]: { ...h, bal: n } })} /></td><td className="r"><Num w={120} value={h.lost} onChange={n => setHist({ ...hist, [b.label]: { ...h, lost: n } })} /></td><td className="r">{h.bal > 0 ? pct(h.lost / h.bal, 2) : '-'}</td></tr>; })}</tbody></table></div>
-                        <Btn small onClick={() => set({ rateType: 'loss', buckets: s.buckets.map(b => { const h = hist[b.label]; return h && h.bal > 0 ? { ...b, pd: Math.min(1, h.lost / h.bal) } : b; }) })}>Use these rates</Btn>
-                    </details>
-                    {segNames.length > 0 && <details className="dx"><summary>Riskier or safer groups</summary><p className="mut">1.0 = average. Use 1.5 for a riskier group and 0.7 for a safer one.</p>
-                        <table className="tbl ed"><thead><tr><th>Group</th><th className="r">Multiplier</th></tr></thead><tbody>{segNames.map(n => <tr key={n}><td>{n}</td><td className="r"><Num w={90} step={0.1} value={s.segMult[n] ?? 1} onChange={v => set({ segMult: { ...s.segMult, [n]: v } })} /></td></tr>)}</tbody></table></details>}
-                    <div className="nav"><Btn kind="ghost" onClick={() => setSetTab('economy')}>Back</Btn><Btn onClick={() => setSetTab('staging')}>Next: stages</Btn></div>
-                </Card>}
+                        <h4 className="h4">How the forecast is used</h4>
+                        <table className="tbl rows"><tbody>
+                            <tr><td><label className="radio"><input type="radio" checked={!single} onChange={() => set({ wBase: 0.5, wUp: 0.2, wDown: 0.3 })} /> <b>Three outcomes, weighted</b> <span className="tag">Recommended</span></label></td>
+                                <td className="mut">Your forecast plus a better and a worse case, weighted {pct(s.wBase, 0)} / {pct(s.wUp, 0)} / {pct(s.wDown, 0)}. IFRS 9 B5.5.42 expects a range of outcomes because losses rise faster in bad times than they fall in good times.</td></tr>
+                            <tr><td><label className="radio"><input type="radio" checked={single} onChange={() => set({ wBase: 1, wUp: 0, wDown: 0 })} /> <b>Your forecast only</b></label></td>
+                                <td className="mut">One outcome. Simpler, but may understate the allowance: document why one scenario is enough.</td></tr>
+                        </tbody></table>
 
-                {setTab === 'staging' && <Card title="Stages: when credit risk has increased" sub="IFRS 9 presumes a significant increase in credit risk after 30 days past due (5.5.11) and default after 90 days (B5.5.37). Both can be rebutted only with documented evidence.">
-                    <div className="live-st big">{STAGES.map(k => { const x = res.byStage.find(y => y.key === k); return x ? <span key={k}><i style={{ background: STAGE_COLOR[k] }} />{k}: {x.n} items, {short(x.gross)} owed, loss {short(x.ecl)}</span> : null; })}</div>
-                    <div className="form">
-                        <Field label="Stage 2 after days past due" hint="Default 30 (5.5.11)"><Num value={s.sicrDays} onChange={n => set({ sicrDays: Math.max(0, Math.round(n)) })} suffix="days" /></Field>
-                        <Field label="Stage 3 (default) after days past due" hint="Default 90 (B5.5.37)"><Num value={s.defaultDays} onChange={n => set({ defaultDays: Math.max(0, Math.round(n)) })} suffix="days" /></Field>
-                        <Field label="Stage 2 when PD has grown by" info="Relative test (5.5.9): PD now / PD at origination. Only used when your file has both PD columns."><Num value={s.sicrMult} step={0.25} onChange={n => set({ sicrMult: Math.max(1, n) })} suffix="x" /></Field>
-                        <Field label="Expected drawdown of unused limits (CCF)" info="Share of undrawn commitments expected to be drawn before default (B5.5.31). Only used with an undrawn column."><Num value={s.ccf} pctMode onChange={n => set({ ccf: Math.min(1, Math.max(0, n)) })} /></Field>
-                    </div>
-                    {(s.sicrDays !== 30 || s.defaultDays !== 90) && <Note tone="warn" title="You changed a rebuttable presumption">Keep reasonable and supportable evidence for your auditor (5.5.11, B5.5.37).</Note>}
-                    {s.defaultDays < s.sicrDays && <Note tone="bad" title="Check the thresholds">The default line is lower than the Stage 2 line.</Note>}
-                    <Note title="Your own stage assessment">Add a "Stage" column (1, 2 or 3) to your file for items on a watch list, low credit risk exposures (5.5.10) or cured items. It overrides the rules above.</Note>
-                    <div className="nav"><Btn kind="ghost" onClick={() => setSetTab('rates')}>Back</Btn><Btn onClick={() => setSetTab('specific')}>Next: individual customers</Btn></div>
-                </Card>}
+                        {macro.status === 'fail' && <Note tone="warn" title="Economic data not loaded">{macro.msg}</Note>}
+                        <details className="dx"><summary>Advanced: better and worse cases, weights and strength</summary>
+                            <p className="mut sm">The better and worse cases move with your forecast. They sit one typical year-to-year swing either side of it.</p>
+                            <div className="scroll"><table className="tbl ed"><thead><tr><th>Factor</th><th>Better case</th><th>Worse case</th><th>Strength <Info text="Change in log default rate per unit. -0.08 means +1 point of GDP growth lowers default rates by about 8%. Illustrative: estimate from your own loss history." /></th></tr></thead>
+                                <tbody>{s.factors.map((f, i) => { const up = (p: Partial<typeof f>) => set({ factors: s.factors.map((x, j) => j === i ? { ...x, ...p } : x) }); return <tr key={f.name}><td>{f.name}</td>
+                                    <td><Num w={100} value={f.up} step={0.1} onChange={n => up({ up: n })} /></td><td><Num w={100} value={f.down} step={0.1} onChange={n => up({ down: n })} /></td>
+                                    <td><Num w={100} value={f.sens} step={0.005} onChange={n => up({ sens: n })} /></td></tr>; })}</tbody></table></div>
+                            {!single && <table className="tbl ed"><thead><tr><th>Weight</th><th>Normal (your forecast)</th><th>Better</th><th>Worse</th></tr></thead><tbody><tr><td>Probability</td>
+                                <td><Num w={100} value={s.wBase} pctMode onChange={n => set({ wBase: n })} /></td><td><Num w={100} value={s.wUp} pctMode onChange={n => set({ wUp: n })} /></td><td><Num w={100} value={s.wDown} pctMode onChange={n => set({ wDown: n })} /></td></tr></tbody></table>}
+                            {Math.abs(wTotal - 1) > 0.0005 && <Note tone="warn" title="Weights do not add to 100%">They add to {pct(wTotal, 1)}. They are scaled to 100% in the calculation.</Note>}
+                            <Field label="Long-run level based on"><select className="in" value={robust ? 'r' : 'm'} onChange={e => setRobust(e.target.value === 'r')}><option value="r">Median of 10 years (recommended)</option><option value="m">Average of 10 years</option></select></Field>
+                            {macroRes.filter(r => r.found).map(r => <div key={r.name} className="scroll"><p className="sm"><b>{r.name}</b> <span className="mut">({r.code}; latest year {r.usedYear})</span></p>
+                                <table className="tbl ed"><thead><tr>{r.series!.map(p => <th key={p.year}>{p.year}</th>)}</tr></thead><tbody><tr>{r.series!.map(p => <td key={p.year}>{p.value.toFixed(1)}</td>)}</tr></tbody></table></div>)}
+                        </details>
+                        <Note tone="warn" title="Check the forecasts">World Bank figures are the latest actuals, not forecasts. For reporting, type your own forecast, for example from the IMF World Economic Outlook.</Note>
+                        <div className="nav"><Btn kind="ghost" onClick={() => setSetTab('basics')}>Back</Btn><Btn onClick={() => setSetTab('rates')}>Next: loss rates</Btn></div>
+                    </Card>;
+                })()}
+
+                {setTab === 'rates' && (() => {
+                    const basis = s.rateBasis || 'example';
+                    const lossMode = basis === 'history' || s.rateType === 'loss';
+                    const setBands = (b: Bucket[], extra: Partial<Settings> = {}) => set({ buckets: b, ...extra });
+                    const editRate = (i: number, n: number) => setBands(s.buckets.map((b, j) => j === i ? { ...b, pd: Math.min(1, Math.max(0, n)) } : b), basis === 'example' ? { rateBasis: 'own' } : {});
+                    const editHist = (i: number, p: Partial<Bucket>) => setBands(s.buckets.map((b, j) => { if (j !== i) return b; const nb = { ...b, ...p }; const hr = historyRate(nb); return hr === null ? nb : { ...nb, pd: hr }; }));
+                    const days = (b: Bucket, i: number) => i === 0 ? 'Not yet due' : i === s.buckets.length - 1 ? 'Over ' + (b.from - 1) + ' days' : b.from + ' to ' + b.to + ' days';
+                    return <Card title="Loss rates" sub="The rate for each age band is the share of money in that band you expect to lose (IFRS 9 provision matrix, B5.5.35).">
+                        <h4 className="h4 first">1. Basic settings</h4>
+                        <table className="tbl ed rows"><tbody>
+                            <tr><td><b>Share lost if not paid (LGD)</b><small>After recoveries and collateral</small></td>
+                                <td>{lossMode ? <span className="mut">Not used: already inside the loss rates</span> : <Num w={130} value={s.lgd} pctMode onChange={n => set({ lgd: Math.min(1, Math.max(0, n)) })} />}</td></tr>
+                            <tr><td><b>Payment terms</b><small>Used when a row has no due date</small></td><td><Num w={130} value={s.termsDays} onChange={n => set({ termsDays: n })} suffix="days" /></td></tr>
+                            <tr><td><b>Discount rate</b><small>Time value of money (5.5.17(b)). 0 = no discounting</small></td><td><Num w={130} value={s.eir} pctMode step={0.5} onChange={n => set({ eir: n })} /></td></tr>
+                            <tr><td><b>Time to collect</b><small>Used for discounting</small></td><td><Num w={130} value={s.months} onChange={n => set({ months: n })} suffix="months" /></td></tr>
+                            <tr><td><b>Management overlay</b><small>Extra margin for risks not in the model. Document why</small></td><td><Num w={130} value={s.overlay} pctMode step={1} onChange={n => set({ overlay: n })} /></td></tr>
+                        </tbody></table>
+
+                        <h4 className="h4">2. Rate for each age band</h4>
+                        <div className="basis">
+                            <span className="mut">Where do the rates come from?</span>
+                            <Seg<'example' | 'own' | 'history'> value={basis} onChange={k => k === 'example' ? set({ rateBasis: 'example', rateType: 'pd', buckets: defaultBuckets() }) : k === 'history' ? set({ rateBasis: 'history', rateType: 'loss', buckets: s.buckets.map(b => { const hr = historyRate(b); return hr === null ? b : { ...b, pd: hr }; }) }) : set({ rateBasis: 'own' })}
+                                options={[{ key: 'example', label: 'Example rates' }, { key: 'own', label: 'My own rates' }, { key: 'history', label: 'Calculate from my history' }]} />
+                        </div>
+                        {basis === 'example' && <Note tone="warn" title="Example rates">These rates are illustrations, not from IFRS 9 or your data. Replace them before reporting.</Note>}
+                        {basis === 'own' && <table className="tbl rows"><tbody><tr><td><b>My rates are</b></td><td><select className="in" value={s.rateType} onChange={e => set({ rateType: e.target.value as any })}><option value="pd">Chance of not paying (PD), multiplied by LGD</option><option value="loss">Loss rates, LGD already included</option></select></td></tr></tbody></table>}
+                        {basis === 'history' && s.buckets.some(b => historyRate(b) === null) && <Note tone="warn" title={`${s.buckets.filter(b => historyRate(b) === null).length} of ${s.buckets.length} bands have no history yet`}>Their current rate is used as a loss rate with no LGD, which can overstate the allowance. Enter the past amount and the amount never collected for every band, or type the rate you can support.</Note>}
+                        {basis === 'history' && <p className="mut sm">For each band, enter the amount that was in the band in past periods and how much of it was never collected. Rate = never collected / amount in band. These are loss rates, so LGD is not applied again. IFRS 9 B5.5.52 asks you to adjust them for current and future conditions; the economic outlook does that.</p>}
+                        <div className="scroll"><table className="tbl ed bands"><thead><tr><th>Age band</th><th>Days past due</th><th>Up to day</th>
+                            {basis === 'history' && <><th>Past amount in band</th><th>Never collected</th></>}
+                            <th>Rate</th><th>How the rate was set</th><th>Items now</th><th>Owed now</th><th>Expected loss now</th><th /></tr></thead>
+                            <tbody>{s.buckets.map((b, i) => { const rs = res.rows.filter(r => r.bucket === b.label); const hr = historyRate(b);
+                                return <tr key={i}>
+                                    <td><input className="in" style={{ width: 130 }} value={b.label} onChange={e => setBands(s.buckets.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} /></td>
+                                    <td className="mut">{days(b, i)}</td>
+                                    <td>{i < s.buckets.length - 1 ? <Num w={90} value={b.to} onChange={n => setBands(setBandEnd(s.buckets, i, n))} /> : <span className="mut">and over</span>}</td>
+                                    {basis === 'history' && <><td><Num w={130} value={b.hBal || 0} onChange={n => editHist(i, { hBal: Math.max(0, n) })} /></td><td><Num w={130} value={b.hLost || 0} onChange={n => editHist(i, { hLost: Math.max(0, n) })} /></td></>}
+                                    <td>{basis === 'history' && hr !== null ? <b>{pct(b.pd, 2)}</b> : <Num w={100} value={b.pd} pctMode onChange={n => editRate(i, n)} />}</td>
+                                    <td className="basis-t">{bandBasis(b, s)}</td>
+                                    <td>{rs.length}</td><td>{fmt(rs.reduce((a, r) => a + r.amount, 0))}</td><td>{fmt(rs.reduce((a, r) => a + r.ecl, 0))}</td>
+                                    <td>{s.buckets.length > 2 && <Btn small kind="ghost" onClick={() => setBands(removeBand(s.buckets, i))}>Remove</Btn>}</td></tr>; })}</tbody></table></div>
+                        <div className="row">
+                            <Btn small kind="ghost" onClick={() => setBands(addBand(s.buckets))}>Add a band</Btn>
+                            <Btn small kind="ghost" onClick={() => set({ buckets: defaultBuckets(), rateBasis: 'example', rateType: 'pd' })}>Reset to examples</Btn>
+                            <span className="grow" />
+                            <Btn small kind="ghost" onClick={() => dlBands('xlsx')}>Download bands (Excel)</Btn>
+                            <Btn small kind="ghost" onClick={() => dlBands('csv')}>Download (CSV)</Btn>
+                        </div>
+                        {segNames.length > 0 && <details className="dx"><summary>Riskier or safer groups (optional)</summary><p className="mut sm">1.0 = average. Use 1.5 for a riskier group and 0.7 for a safer one.</p>
+                            <table className="tbl ed"><thead><tr><th>Group</th><th>Multiplier</th></tr></thead><tbody>{segNames.map(n => <tr key={n}><td>{n}</td><td><Num w={100} step={0.1} value={s.segMult[n] ?? 1} onChange={v => set({ segMult: { ...s.segMult, [n]: v } })} /></td></tr>)}</tbody></table></details>}
+                        <div className="nav"><Btn kind="ghost" onClick={() => setSetTab('economy')}>Back</Btn><Btn onClick={() => setSetTab('staging')}>Next: stages</Btn></div>
+                    </Card>;
+                })()}
+
+                {setTab === 'staging' && (() => {
+                    const cnt = (f: (r: Calc) => boolean) => res.rows.filter(f).length;
+                    const hasPd = res.rows.some(r => r.pdIn !== null && r.origPd !== null); const hasUndrawn = res.rows.some(r => r.undrawn > 0);
+                    return <Card title="Stages" sub="Each item is placed in Stage 1, 2 or 3 by the rules below. Under the simplified approach the stage is shown for disclosure only; under the general approach it decides 12-month or lifetime loss.">
+                        <table className="tbl ed rows"><thead><tr><th>Rule</th><th>Setting</th><th>IFRS 9</th><th>Items caught now</th></tr></thead><tbody>
+                            <tr><td><b>Move to Stage 2</b> when more than ... days past due</td><td><Num w={120} value={s.sicrDays} onChange={n => set({ sicrDays: Math.max(0, Math.round(n)) })} suffix="days" /></td><td className="mut sm">5.5.11, presumed 30</td><td>{cnt(r => r.stage === 2 && /days past due/.test(r.stageWhy))}</td></tr>
+                            <tr><td><b>Move to Stage 3 (default)</b> when more than ... days past due</td><td><Num w={120} value={s.defaultDays} onChange={n => set({ defaultDays: Math.max(0, Math.round(n)) })} suffix="days" /></td><td className="mut sm">B5.5.37, presumed 90</td><td>{cnt(r => r.stage === 3 && /days past due/.test(r.stageWhy))}</td></tr>
+                            <tr><td><b>Move to Stage 3</b> when flagged credit-impaired in your file</td><td className="mut">Always on</td><td className="mut sm">Appendix A</td><td>{cnt(r => r.stage === 3 && /impaired/i.test(r.stageWhy))}</td></tr>
+                            <tr><td><b>Move to Stage 2</b> when PD has grown to ... times the PD at the start</td><td><Num w={120} value={s.sicrMult} step={0.25} onChange={n => set({ sicrMult: Math.max(1, n) })} suffix="x" /></td><td className="mut sm">5.5.9</td><td>{hasPd ? cnt(r => /PD now/.test(r.stageWhy)) : <span className="mut">needs PD columns</span>}</td></tr>
+                            <tr><td><b>Your own stage</b> from a "Stage" column in your file</td><td className="mut">Overrides the rules</td><td className="mut sm">5.5.10, B5.5.17</td><td>{cnt(r => /your own/.test(r.stageWhy))}</td></tr>
+                            <tr><td><b>Unused credit limits</b> expected to be drawn (CCF)</td><td><Num w={120} value={s.ccf} pctMode onChange={n => set({ ccf: Math.min(1, Math.max(0, n)) })} /></td><td className="mut sm">B5.5.31</td><td>{hasUndrawn ? cnt(r => r.undrawn > 0) : <span className="mut">needs undrawn column</span>}</td></tr>
+                        </tbody></table>
+                        {(s.sicrDays !== 30 || s.defaultDays !== 90) && <Note tone="warn" title="You changed a rebuttable presumption">Keep reasonable and supportable evidence for your auditor (5.5.11, B5.5.37).</Note>}
+                        {s.defaultDays < s.sicrDays && <Note tone="bad" title="Check the settings">The Stage 3 line is lower than the Stage 2 line.</Note>}
+                        <h4 className="h4">Result</h4>
+                        <table className="tbl ed rows"><thead><tr><th>Stage</th><th>Meaning</th><th>Items</th><th>Owed</th><th>Expected loss</th><th>Coverage</th></tr></thead><tbody>
+                            {STAGES.map(k => { const x = res.byStage.find(y => y.key === k); if (!x && k === 'POCI') return null; const g = x || { n: 0, gross: 0, ecl: 0 };
+                                return <tr key={k}><td><i className="dot" style={{ background: STAGE_COLOR[k] }} /><b>{k}</b></td><td className="mut">{k === 'Stage 1' ? 'Performing' : k === 'Stage 2' ? 'Credit risk increased significantly' : k === 'Stage 3' ? 'Credit-impaired / default' : 'Credit-impaired when bought or lent'}</td>
+                                    <td>{g.n}</td><td>{fmt(g.gross)}</td><td>{fmt(g.ecl)}</td><td>{pct(g.gross ? g.ecl / g.gross : 0, 1)}</td></tr>; })}
+                            <tr className="tot"><td>Total</td><td /><td>{res.rows.length}</td><td>{fmt(res.gross)}</td><td>{fmt(res.ecl)}</td><td>{pct(res.coverage, 1)}</td></tr>
+                        </tbody></table>
+                        <div className="nav"><Btn kind="ghost" onClick={() => setSetTab('rates')}>Back</Btn><Btn onClick={() => setSetTab('specific')}>Next: individual customers</Btn></div>
+                    </Card>;
+                })()}
 
                 {setTab === 'specific' && <Card title="Customers assessed one by one" sub="For example a customer in dispute, in insolvency or on a payment plan. They are taken out of the group calculation (5.5.4).">
                     {Object.entries(s.specific).length > 0 ? <div className="scroll"><table className="tbl ed"><thead><tr><th>Customer</th><th>Type</th><th className="r">Value</th><th>Reason</th><th /></tr></thead><tbody>{Object.entries(s.specific).map(([c, v]) => <tr key={c}><td>{c}</td>
