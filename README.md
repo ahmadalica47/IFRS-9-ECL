@@ -2,7 +2,7 @@
 
 Works out the IFRS 9 loss allowance for **trade receivables** (simplified approach, provision matrix) and **loans and debt** (general approach: Stage 1, 2, 3 and POCI). It is built for accountants, auditors and banks.
 
-**Live site:** https://ifrs9-ecl.pages.dev
+**Live site:** https://ifrs-9-ecl.ahmadalica47.workers.dev
 
 - **Private:** your file is processed only in your browser. Nothing is uploaded.
 - **Works offline:** after the first visit, or as a single downloadable .html file.

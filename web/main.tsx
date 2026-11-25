@@ -27,7 +27,7 @@ function WebFooter() {
         <span>{online ? 'Online' : 'Offline: everything works except loading new World Bank data'}</span>
         {SINGLE ? <span>Offline edition: this single file runs with no internet.</span> : <>
             {ready && <span>Ready to use offline on this device.</span>}
-            <a href="./offline/index.html" download="ifrs9-ecl-calculator.html">Download the offline file</a>
+            <a href="./offline/" download="ifrs9-ecl-calculator.html">Download the offline file</a>
             {install && <button type="button" className="btn btn-ghost btn-s" onClick={() => { install.prompt(); setInstall(null); }}>Install as an app</button>}
         </>}
         <span className="web-priv">Your data is processed only in this browser. Nothing is uploaded.</span>

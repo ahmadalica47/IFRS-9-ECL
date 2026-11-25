@@ -41,16 +41,14 @@ The app runs entirely in the user's browser. No data is uploaded, so there is no
    git push -u origin main
    ```
 
-### 2a. Host on Cloudflare Pages (recommended: free, fast, applies the security headers in `public/_headers`)
-1. Go to dash.cloudflare.com, then **Workers & Pages**, **Create**, **Pages**, **Connect to Git**, and pick the repository.
-2. Use these settings:
-   - Framework preset: *None*
-   - Build command: `npm run build`
-   - Build output directory: `dist`
-   - Environment variable: `NODE_VERSION` = `20`
-3. Click **Save and Deploy**. You get `https://<name>.pages.dev`. You can add your own domain under *Custom domains*.
-4. Every `git push` publishes a new version. Users get it the next time they are online.
-5. The GitHub workflow runs the tests on every push. It publishes to GitHub Pages only if you set the repository variable `DEPLOY_TO_GITHUB_PAGES` to `true`.
+### 2a. Cloudflare Workers (this is how the live site is set up)
+Live: **https://ifrs-9-ecl.ahmadalica47.workers.dev**
+- Cloudflare dashboard: *Workers & Pages* > **ifrs-9-ecl**, connected to GitHub `ahmadalica47/IFRS-9-ECL`, branch `main`.
+- Build command `npm run build`. Deploy command `npx wrangler deploy`, which publishes `dist/` as a static site using `wrangler.jsonc`.
+- Security headers come from `public/_headers`.
+- Every `git push` to `main` builds and publishes automatically, in about 1.5 minutes. Users get the new version the next time they are online.
+- To use your own domain: *ifrs-9-ecl > Domains > Add Domain* (the domain must be on Cloudflare).
+- Note: Cloudflare's automatic setup does not support Vite 5.4. `wrangler.jsonc` is what makes the deploy work, so keep it.
 
 ### 2b. Or host on GitHub Pages
 In the repository, go to *Settings > Pages > Source* and choose **GitHub Actions**, and set the repository variable `DEPLOY_TO_GITHUB_PAGES` to `true` (*Settings > Secrets and variables > Actions > Variables*). The included workflow then tests, builds and publishes on every push to `main`.
