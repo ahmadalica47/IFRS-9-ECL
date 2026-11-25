@@ -1,0 +1,11 @@
+Borrower,Loan ID,Disbursement date,Due date,Maturity date,Outstanding,Segment,Currency,Collateral,Days past due,Probability of default,PD at origination,LGD,Effective interest rate,Undrawn amount,Stage,POCI,Initial ECL,Credit impaired
+Al Rajhi Steel,LN-001,2024-03-15,2026-12-15,2029-03-15,2500000,Corporate,SAR,500000,0,1.2%,1.0%,40%,7.5%,500000,,No,,No
+Najd Foods,LN-002,2023-06-01,2026-12-01,2028-06-01,1200000,SME,SAR,0,0,3.5%,1.2%,45%,9.0%,0,,No,,No
+Desert Homes,LN-003,2022-01-10,2026-10-10,2030-01-10,3000000,Real estate,SAR,1800000,45,6.0%,2.5%,35%,8.0%,0,,No,,No
+Gulf Marine,LN-004,2021-09-20,2026-07-20,2027-09-20,800000,SME,SAR,0,120,25%,3.0%,55%,10.0%,0,,No,,Yes
+Red Sea Hotels,LN-005,2025-02-01,2026-11-01,2031-02-01,5000000,Corporate,SAR,2000000,0,0.8%,0.7%,40%,6.5%,1000000,,No,,No
+Medina Clinics,LN-006,2024-08-15,2026-11-15,2027-08-15,650000,SME,SAR,0,15,2.0%,1.8%,45%,9.5%,150000,2,No,,No
+Eastern Plastics,LN-007,2023-11-30,2026-09-30,2028-11-30,1500000,Corporate,SAR,300000,95,30%,2.0%,50%,8.5%,0,,No,,No
+Tabuk Farms,LN-008,2025-05-10,2026-11-10,2027-05-10,400000,SME,SAR,0,0,1.5%,1.4%,45%,10.0%,0,1,No,,No
+Jeddah Retail Group,LN-009,2024-12-01,2026-12-01,2029-12-01,2200000,Corporate,SAR,0,35,4.0%,1.5%,45%,7.0%,300000,,No,,No
+Distressed Debt Buyout,LN-010,2025-10-01,2026-10-01,2028-10-01,900000,Purchased,SAR,0,100,60%,60%,60%,18.0%,0,,Yes,250000,Yes

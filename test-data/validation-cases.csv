@@ -1,0 +1,13 @@
+Customer name,Invoice no,Invoice date,Due date,Outstanding amount,Collateral,Credit impaired
+Case 01 Current,VAL-01,2026-09-15,2026-10-15,100000,0,No
+Case 02 Late 20 days,VAL-02,2026-08-11,2026-09-10,80000,0,No
+Case 03 Late 45 days,VAL-03,2026-07-17,2026-08-16,60000,0,No
+Case 04 Late 80 days,VAL-04,2026-06-12,2026-07-12,50000,0,No
+Case 05 Late 150 days,VAL-05,2026-04-03,2026-05-03,40000,0,No
+Case 06 Late 270 days,VAL-06,2025-12-04,2026-01-03,30000,0,No
+Case 07 Late 486 days,VAL-07,2025-05-02,2025-06-01,20000,0,No
+Case 08 Collateral,VAL-08,2026-07-17,2026-08-16,90000,40000,No
+Case 09 Credit impaired,VAL-09,2026-05-23,2026-06-22,70000,0,Yes
+Case 10 No due date,VAL-10,2026-08-01,,25000,0,No
+Case 11 Credit note,VAL-11,2026-09-01,2026-10-01,-5000,0,No
+Case 12 After reporting date,VAL-12,2026-10-05,2026-11-04,45000,0,No

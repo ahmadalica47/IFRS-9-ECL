@@ -1,0 +1,13 @@
+Customer name,Invoice no,Invoice date,Due date,Outstanding amount,Segment,Country,Currency,Collateral,Credit impaired
+Al Noor Trading,INV-2001,2026-11-10,2026-12-10,45000,Wholesale,Saudi Arabia,SAR,0,No
+Gulf Build Contracting,INV-2002,2026-10-02,2026-11-01,120500,Construction,Saudi Arabia,SAR,0,No
+Riyadh Fresh Mart,INV-2003,2026-09-15,2026-10-15,38000,Retail,Saudi Arabia,SAR,0,No
+Nile Tech Solutions,INV-2004,2026-08-20,2026-09-19,76250,Technology,Egypt,SAR,0,No
+Emirates Supply Co,INV-2005,2026-07-01,2026-07-31,210000,Wholesale,UAE,SAR,105000,No
+Kuwait Medical Group,INV-2006,2026-05-12,2026-06-11,54300,Healthcare,Kuwait,SAR,0,No
+Ministry Services Unit,INV-2007,2026-04-01,2026-05-31,330000,Government,Saudi Arabia,SAR,0,No
+Delta Construction,INV-2008,2026-01-15,2026-02-14,98000,Construction,Egypt,SAR,0,Yes
+Desert Star Retail,INV-2009,2025-10-05,2025-11-04,22000,Retail,Saudi Arabia,SAR,0,No
+Falcon Builders,INV-2010,2025-08-01,2025-08-31,150000,Construction,Saudi Arabia,SAR,0,No
+Coastal Foods,INV-2011,2026-11-25,2026-12-25,17500,Retail,UAE,SAR,0,No
+Najd Industrial,INV-2012,2026-11-20,2026-12-20,64000,Wholesale,Saudi Arabia,SAR,0,No

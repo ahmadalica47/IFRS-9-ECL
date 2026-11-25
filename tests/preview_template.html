@@ -1,0 +1,46 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IFRS 9 ECL Calculator (local preview)</title>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/typescript@5.4.5/lib/typescript.js"></script>
+<style>
+:root { --ds-page: #ffffff; --ds-ink: #0f2a33; --ds-ink-2: #5b7580; --ds-ink-4: #b7c7cc; --ds-hairline: #e1e9ec; --ds-teal: #0f766e; --ds-raised: #f3f7f8; }
+body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ds-ink); }
+.shim-card { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.shim-group { margin: 8px 0 24px; } .shim-group > h3 { font-size: 19px; margin: 8px 0 12px; }
+.shim-callout { border-left: 4px solid #0f766e; background: #f0faf8; border-radius: 6px; padding: 10px 14px; margin: 12px 0; } .shim-callout.warning { border-color: #d97706; background: #fff8eb; }
+.shim-callout > b { display: block; margin-bottom: 4px; }
+.shim-closing { color: var(--ds-ink-2); font-size: 13px; margin: 24px 0; }
+.file-button { font: inherit; font-weight: 600; min-height: 40px; padding: 0 16px; border-radius: 8px; border: 1px solid #0f766e; background: #0f766e; color: #fff; cursor: pointer; }
+.file-button[data-variant="secondary"] { background: #fff; color: #0f766e; } .file-button:disabled { opacity: .45; cursor: default; }
+.file-button.is-compact { min-height: 32px; padding: 0 10px; font-size: 13px; }
+#boot { padding: 24px; color: #5b7580; }
+/*__CSS__*/
+</style></head><body><div id="root"><div id="boot">Loading the calculator (needs an internet connection the first time)...</div></div>
+<script>
+(function () {
+  const FILES = __FILES__;
+  const h = React.createElement;
+  const shim = {
+    FileRouter: p => h(React.Fragment, null, p.children),
+    FileCard: p => h('div', { className: 'shim-card' }, p.children),
+    Group: p => h('section', { className: 'shim-group' }, p.heading ? h('h3', null, p.label) : null, p.children),
+    Callout: p => h('div', { className: 'shim-callout ' + (p.tone || '') }, p.title ? h('b', null, p.title) : null, h('div', null, p.children)),
+    Closing: p => h('p', { className: 'shim-closing' }, p.children),
+  };
+  const ext = { 'react': React, 'react-dom/client': ReactDOM, '@instinct/files': shim };
+  const mods = {};
+  function req(name) {
+    if (ext[name]) return ext[name];
+    if (/\.css$/.test(name)) return {};
+    const k = name.replace(/^\.\//, ''); if (mods[k]) return mods[k].exports;
+    const file = FILES[k + '.tsx'] !== undefined ? k + '.tsx' : k + '.ts';
+    const m = { exports: {} }; mods[k] = m;
+    const js = ts.transpileModule(FILES[file], { fileName: file, compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
+    new Function('require', 'module', 'exports', js)(req, m, m.exports);
+    return m.exports;
+  }
+  try { document.getElementById('root').innerHTML = ''; req('./main'); }
+  catch (e) { document.getElementById('root').innerHTML = '<pre style="color:#b91c1c;padding:16px">' + (e && e.stack || e) + '</pre>'; }
+})();
+</script></body></html>

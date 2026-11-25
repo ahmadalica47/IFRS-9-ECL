@@ -1,0 +1,28 @@
+{
+  "name": "ifrs9-ecl-calculator",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "description": "IFRS 9 expected credit loss calculator. Runs fully in the browser; works offline.",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc --noEmit && vite build && vite build --mode single",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "@vitejs/plugin-react": "4.3.3",
+    "typescript": "5.4.5",
+    "vite": "5.4.10",
+    "vite-plugin-singlefile": "2.0.3",
+    "vitest": "2.1.4"
+  },
+  "engines": { "node": ">=18.18" }
+}
