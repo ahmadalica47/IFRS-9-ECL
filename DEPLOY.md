@@ -49,8 +49,6 @@ The app runs entirely in the user's browser. No data is uploaded, so there is no
 - Every `git push` to `main` builds and publishes automatically, in about 1 minute.
 - To use your own domain (e.g. `ifrs-9-ecl.dev`): buy it under *Domains > Registrations*, then go to *Workers & Pages > ifrs9-ecl > Custom domains > Set up a custom domain*.
 
-Second copy: https://ifrs-9-ecl.ahmadalica47.workers.dev (Workers project `ifrs-9-ecl`, deployed by `npx wrangler deploy` using `wrangler.jsonc`). It updates on every push too. You can delete it in the dashboard if one address is enough; if you do, `wrangler.jsonc` can also be removed.
-
 ### 2b. Or host on GitHub Pages
 In the repository, go to *Settings > Pages > Source* and choose **GitHub Actions**, and set the repository variable `DEPLOY_TO_GITHUB_PAGES` to `true` (*Settings > Secrets and variables > Actions > Variables*). The included workflow then tests, builds and publishes on every push to `main`.
 GitHub Pages ignores `_headers`, so the security headers do not apply there.
